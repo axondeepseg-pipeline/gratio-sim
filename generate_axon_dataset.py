@@ -33,8 +33,8 @@ def generate_axon_dataset(
         angles = [0]
     
     # Create output directory
-    Path(output_dir).mkdir(exist_ok=True)
-    
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
     # Calculate image dimensions once, based on largest axon + worst-case conditions
     # Find the worst case: largest diameter + smallest g-ratio (thickest myelin) + largest angle (max stretch)
     max_diameter = max(axon_diameters)
@@ -81,11 +81,12 @@ def generate_axon_dataset(
                 key = (float(diameter), float(gratio), float(angle))
                 dataset[key] = sim.image.copy()
                 
-                # Save image
-                # Format diameter as 3 digits (zero-padded integer part)
+                # Save image in g{gratio}/a{angle}/ subdirectory
+                subdir = os.path.join(output_dir, f"g{gratio:.2f}", f"a{angle:.1f}")
+                Path(subdir).mkdir(parents=True, exist_ok=True)
                 diam_int = int(diameter)
                 filename = f"axon_d{diam_int:03d}_g{gratio:.2f}_a{angle:.1f}.png"
-                filepath = os.path.join(output_dir, filename)
+                filepath = os.path.join(subdir, filename)
                 sim.save(filepath)
                 
                 if count % 50 == 0:
@@ -96,6 +97,17 @@ def generate_axon_dataset(
 
 
 if __name__ == "__main__":
-    dataset = generate_axon_dataset()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate a dataset of simulated axon images.")
+    parser.add_argument("--gratios", type=float, nargs="+", default=None,
+                        help="List of g-ratios (default: [0.7])")
+    parser.add_argument("--angles", type=float, nargs="+", default=None,
+                        help="List of plane angles in degrees (default: [0])")
+    parser.add_argument("--output-dir", type=str, default="axon_dataset",
+                        help="Output directory (default: axon_dataset)")
+    args = parser.parse_args()
+
+    dataset = generate_axon_dataset(gratios=args.gratios, angles=args.angles, output_dir=args.output_dir)
     print(f"\nDataset contains {len(dataset)} axon images")
     print(f"Sample keys: {list(dataset.keys())[:3]}")

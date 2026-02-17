@@ -210,7 +210,7 @@ def validate_morphometrics(dataset_dir="axon_dataset", pixel_size_um=1.0):
     print(f"  Max error: {results_df['gratio_error'].max():.4f} ({results_df['gratio_error_pct'].max():.2f}%)")
     
     # Save full results
-    output_file = "validation_results.csv"
+    output_file = os.path.join(dataset_dir, "validation_results.csv")
     results_df.to_csv(output_file, index=False)
     print(f"\nFull results saved to {output_file}")
     
@@ -223,27 +223,55 @@ def validate_morphometrics(dataset_dir="axon_dataset", pixel_size_um=1.0):
 
 
 if __name__ == "__main__":
-    dataset_dir = "axon_dataset"
-    
-    # Step 1: Create segmentation masks from simulated images
-    create_segmentation_masks(dataset_dir)
-    
-    # Step 2: Extract morphometrics
-    extract_morphometrics(dataset_dir)
-    
-    # Step 3: Clean up extra files created by morphometrics (keep only the main CSV files)
-    print("Cleaning up extra morphometrics files...")
-    import os
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Validate axon simulations against AxonDeepSeg morphometrics.")
+    parser.add_argument("--dataset-dir", type=str, default="axon_dataset",
+                        help="Dataset root directory (default: axon_dataset)")
+    args = parser.parse_args()
+
+    dataset_dir = args.dataset_dir
+
+    # Discover all g*/a*/ subdirectories
+    subdirs = sorted(glob.glob(os.path.join(dataset_dir, "g*", "a*")))
+    if not subdirs:
+        print(f"No g*/a*/ subdirectories found in {dataset_dir}")
+        exit(1)
+
+    print(f"Found {len(subdirs)} subdirectories in {dataset_dir}\n")
+
     import re
-    pattern = r'^axon_d\d{3}_g[\d.]+_a[\d.]+_axon_morphometrics\.csv$'
-    all_csv = [f for f in os.listdir(dataset_dir) if f.endswith("_axon_morphometrics.csv")]
-    extra_csv = [f for f in all_csv if not re.match(pattern, f)]
-    
-    for f in extra_csv:
-        os.remove(os.path.join(dataset_dir, f))
-    
-    if extra_csv:
-        print(f"Removed {len(extra_csv)} extra morphometrics files")
-    
-    # Step 4: Validate
-    validate_morphometrics(dataset_dir)
+
+    all_results = []
+    for subdir in subdirs:
+        print(f"\n{'='*60}")
+        print(f"Processing {subdir}")
+        print(f"{'='*60}")
+
+        # Step 1: Create segmentation masks
+        create_segmentation_masks(subdir)
+
+        # Step 2: Extract morphometrics
+        extract_morphometrics(subdir)
+
+        # Step 3: Clean up extra morphometrics files
+        pattern = r'^axon_d\d{3}_g[\d.]+_a[\d.]+_axon_morphometrics\.csv$'
+        all_csv = [f for f in os.listdir(subdir) if f.endswith("_axon_morphometrics.csv")]
+        extra_csv = [f for f in all_csv if not re.match(pattern, f)]
+        for f in extra_csv:
+            os.remove(os.path.join(subdir, f))
+        if extra_csv:
+            print(f"Removed {len(extra_csv)} extra morphometrics files")
+
+        # Step 4: Validate
+        results_df = validate_morphometrics(subdir)
+        if results_df is not None:
+            all_results.append(results_df)
+
+    # Save aggregated results at the top level
+    if all_results:
+        combined = pd.concat(all_results, ignore_index=True)
+        output_file = os.path.join(dataset_dir, "validation_results.csv")
+        combined.to_csv(output_file, index=False)
+        print(f"\n{'='*60}")
+        print(f"Aggregated results ({len(combined)} measurements) saved to {output_file}")
